@@ -12,6 +12,8 @@ enum token {
     string(str),
     pipe,  // |
     redirect_output(str),  // > file
+    redirect_error(str),  // 2> file
+    redirect_error_to_output,  // 2>&1
     redirect_input(str),  // < file
     and,  // &&
     or,  // ||
@@ -33,6 +35,24 @@ fn make_string_consumption(c: [char], offset: uint, end: uint) -> consumption {
          offset: end};
 }
 
+fn is_token_separator(c: [char], offset: uint) -> bool {
+    if str::is_whitespace(str::from_char(c[offset])) {
+        true
+    } else {
+        alt c[offset] {
+          '<' | '>' | ';' | '&' | '|' | '(' | ')' { true }
+          '\\' {
+            if offset + 1u == vec::len(c) {
+                true
+            } else {
+                false
+            }
+          }
+          _ { false }
+        }
+    }
+}
+
 fn consume_whitespace(c: [char], offset: uint) -> consumption {
     let end = offset;
     while (end < vec::len(c) 
@@ -50,6 +70,20 @@ fn consume_or(c: [char], offset: uint) -> consumption {
     ret {t: or, offset: offset + 2u};
 }
 
+fn consume_pipe(c: [char], offset: uint) -> consumption {
+    assert c[offset] == '|';
+    ret {t: pipe, offset: offset + 1u};
+}
+
+fn consume_pipechar(c: [char], offset: uint) -> consumption {
+    assert c[offset] == '|';
+    if offset + 1u < vec::len(c) && c[offset + 1u] == '|' {
+        consume_or(c, offset)
+    } else {
+        consume_pipe(c, offset)
+    }
+}
+
 fn consume_and(c: [char], offset: uint) -> consumption {
     if vec::len(c) < offset + 2u || c[offset] != '&' || c[offset + 1u] != '&' {
         fail(#fmt("Tried to consume && at %u of '%s'.",
@@ -58,14 +92,52 @@ fn consume_and(c: [char], offset: uint) -> consumption {
     ret {t: and, offset: offset + 2u};
 }
 
-fn consume_pipe(c: [char], offset: uint) -> consumption {
-    assert c[offset] == '|';
-    ret {t: pipe, offset: offset + 1u};
-}
-
 fn consume_background(c: [char], offset: uint) -> consumption {
     assert c[offset] == '&';
     ret {t: background, offset: offset + 1u};
+}
+
+fn consume_ampersand(c: [char], offset: uint) -> consumption {
+    assert c[offset] == '&';
+    if offset + 1u < vec::len(c) && c[offset + 1u] == '&' {
+        consume_and(c, offset)
+    } else {
+        consume_background(c, offset)
+    }
+}
+
+fn consume_redirect_error(c: [char], offset: uint) -> consumption {
+    assert c[offset] == '2';
+    assert c[offset + 1u] == '>';
+    let {t:_, offset: ws_offset} = consume_whitespace(c, offset + 2u);
+    ret alt consume_string(c, ws_offset) {
+      {t: string(file_name), offset: end} {
+        if str::len(file_name) > 0u {
+            {t: redirect_error(file_name), offset: end}
+        } else {
+            {t: error("No error file specified."), offset: vec::len(c) }
+        }
+      }
+      _ {
+        {t: error("Could not parse file name for error redirection."),
+         offset: vec::len(c) }
+      }
+    }
+}
+
+fn consume_two(c: [char], offset: uint) -> consumption {
+    assert c[offset] == '2';
+    if offset + 3u < vec::len(c)
+        && c[offset + 1u] == '>'
+        && c[offset + 2u] == '&'
+        && c[offset + 3u] == '1'
+        && (offset + 4u == vec::len(c) || is_token_separator(c, offset + 4u)) {
+        {t: redirect_error_to_output, offset: offset + 4u}
+    } else if offset + 1u < vec::len(c) && c[offset + 1u] == '>' {
+        consume_redirect_error(c, offset)
+    } else {
+        consume_string(c, offset)
+    }
 }
 
 fn consume_redirect_output(c: [char], offset: uint) -> consumption {
@@ -172,21 +244,10 @@ fn consume_string(c: [char], offset: uint) -> consumption {
     let s: str = "";
     let end = offset;
     while end < vec::len(c) {
-        if str::is_whitespace(str::from_char(c[end])) {
+        if is_token_separator(c, end) {
             break;
         } else {
             alt c[end] {
-              '<' | '>' | ';' | '&' | '|' | '(' | ')' {
-                break;
-              }
-              '\\' {
-                if end + 1u < vec::len(c) {
-                    str::push_char(s, '\\');
-                    end += 1u;
-                } else {
-                    break;
-                }
-              }
               '"' {
                 let r = consume_doubleq(c, end);
                 alt r {
@@ -232,11 +293,7 @@ fn consume_token(c: [char], offset: uint) -> consumption {
     let t: consumption =
         alt c[offset] {
           '|' {
-            if offset + 1u < vec::len(c) && c[offset + 1u] == '|' {
-                consume_or(c, offset)
-            } else {
-                consume_pipe(c, offset)
-            }
+            consume_pipechar(c, offset)
           }
           '>' {
             consume_redirect_output(c, offset)
@@ -245,11 +302,10 @@ fn consume_token(c: [char], offset: uint) -> consumption {
             consume_redirect_input(c, offset)
           }
           '&' {
-            if offset + 1u < vec::len(c) && c[offset + 1u] == '&' {
-                consume_and(c, offset)
-            } else {
-                consume_background(c, offset)
-            }
+            consume_ampersand(c, offset)
+          }
+          '2' {
+            consume_two(c, offset)
           }
           ';' {
             consume_sequence(c, offset)
@@ -348,4 +404,14 @@ fn unterminated_string() {
     let ts = tokenize("foo \"bar baz");
     log(info, ts);
     assert ts == [string("foo"), error("Missing \".")];
+}
+
+#[test]
+fn test_two() {
+    assert tokenize("foo 2>1") == [string("foo"), redirect_error("1")];
+    assert tokenize("foo 2>&1") == [string("foo"), redirect_error_to_output];
+    assert tokenize("foo 2") == [string("foo"), string("2")];
+    assert tokenize("foo 2bar") == [string("foo"), string("2bar")];
+    assert tokenize("foo 2>&file") == [string("foo"),
+                                       error("No error file specified.")];
 }
