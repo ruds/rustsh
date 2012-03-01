@@ -73,7 +73,11 @@ fn consume_redirect_output(c: [char], offset: uint) -> consumption {
     let {t:_, offset: ws_offset} = consume_whitespace(c, offset + 1u);
     ret alt consume_string(c, ws_offset) {
       {t: string(file_name), offset: end} {
-        {t: redirect_output(file_name), offset: end}
+        if str::len(file_name) > 0u {
+            {t: redirect_output(file_name), offset: end}
+        } else {
+            {t: error("No output file specified."), offset: vec::len(c) }
+        }
       }
       _ {
         {t: error("Could not parse file name for output redirection."),
@@ -87,7 +91,11 @@ fn consume_redirect_input(c: [char], offset: uint) -> consumption {
     let {t:_, offset: ws_offset} = consume_whitespace(c, offset + 1u);
     ret alt consume_string(c, ws_offset) {
       {t: string(file_name), offset: end} {
-        {t: redirect_input(file_name), offset: end}
+        if str::len(file_name) > 0u {
+            {t: redirect_input(file_name), offset: end}
+        } else {
+            {t: error("No input file specified."), offset: vec::len(c) }
+        }
       }
       _ {
         {t: error("Could not parse file name for input redirection."),
@@ -316,6 +324,16 @@ fn complex_pipeline() {
                   string("hello\\"), close_subshell, pipe, string("grep"),
                   string("-i"), string("he"), redirect_output("matches"),
                   background];
+}
+
+#[test]
+fn test_redirection() {
+    assert tokenize("wc -l < file.txt") == [string("wc"), string("-l"),
+                                            redirect_input("file.txt")];
+    assert tokenize("wc<in>out") == [string("wc"), redirect_input("in"),
+                                     redirect_output("out")];
+    assert tokenize("wc < >&") ==
+        [string("wc"), error("No input file specified.")];
 }
 
 #[test]
