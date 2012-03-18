@@ -6,6 +6,7 @@ Command-line tokenizing
 use std;
 
 export token;
+export token_to_string;
 export tokenize;
 
 enum token {
@@ -23,6 +24,25 @@ enum token {
     close_subshell,  // )
     continuation,  // \
     error(str),
+}
+
+fn token_to_string(t: token) -> str {
+    ret alt t {
+      string(s) { s }
+      pipe { "|" }
+      redirect_output(s) { ">" + s }
+      redirect_error(s) { "2>" + s }
+      redirect_error_to_output { "2>&1" }
+      redirect_input(s) { "<" + s }
+      and { "&&" }
+      or { "||" }
+      background { "&" }
+      sequence { ";" }
+      open_subshell { "(" }
+      close_subshell { ")" }
+      continuation { "\\" }
+      error(s) { "Error: '" + s + "'" }
+    };
 }
 
 type consumption = {
@@ -274,7 +294,7 @@ fn consume_string(c: [char], offset: uint) -> consumption {
                     ret r;
                   }
                   _ {
-                    fail("consume_singleq returned an unexpected type.");
+                    fail("consume_doubleq returned an unexpected type.");
                   }
                 }
               }
