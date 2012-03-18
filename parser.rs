@@ -97,13 +97,13 @@ enum part_parse {
     sep(token),
 }
 
-fn finish_parse(p: [part_parse]) -> parse_result {
-    assert vec::is_not_empty(p);
+fn finish_parse(parts: [part_parse]) -> parse_result {
+    assert vec::is_not_empty(parts);
     fail("not implemented.");
 }
 
 fn parse_tokens(tokens: [token], level: uint, &idx: uint) -> parse_result {
-    let p: [part_parse] = [];
+    let parts: [part_parse] = [];
     let cur: [token] = [];
 
     #macro([#make_command[ts, ps],
@@ -123,14 +123,14 @@ fn parse_tokens(tokens: [token], level: uint, &idx: uint) -> parse_result {
           | tokenizer::or
           | tokenizer::background
           | tokenizer::sequence {
-            #make_command[cur, p];
-            p += [sep(t)];
+            #make_command[cur, parts];
+            parts += [sep(t)];
           }
           tokenizer::open_subshell {
-            #make_command[cur, p];
+            #make_command[cur, parts];
             idx += 1u;
             alt parse_tokens(tokens, level + 1u, idx) {
-              parsed(cl) { p += [subshell(cl)]; }
+              parsed(cl) { parts += [subshell(cl)]; }
               error(e) { ret error(e); }
               continuation_required { fail("Inconceivable!"); }
             }
@@ -139,8 +139,8 @@ fn parse_tokens(tokens: [token], level: uint, &idx: uint) -> parse_result {
             if level == 0u {
                 ret error("Unexpected ')'.");
             }
-            #make_command[cur, p];
-            ret finish_parse(p);
+            #make_command[cur, parts];
+            ret finish_parse(parts);
           }
           tokenizer::continuation {  /* ignore me! */ }
           _ { cur += [t]; }
@@ -150,8 +150,8 @@ fn parse_tokens(tokens: [token], level: uint, &idx: uint) -> parse_result {
     if level > 0u {
         ret error("Expected ')'");
     }
-    #make_command[cur, p];
-    ret finish_parse(p);
+    #make_command[cur, parts];
+    ret finish_parse(parts);
 }
 
 #[test]
