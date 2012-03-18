@@ -92,7 +92,7 @@ fn make_command(tokens: [token]) -> either<command, str> {
 }
 
 enum part_parse {
-    c(command),
+    cmd(command),
     subshell(command_line),
     sep(token),
 }
@@ -109,7 +109,7 @@ fn parse_tokens(tokens: [token], level: uint, &idx: uint) -> parse_result {
     #macro([#make_command[ts, ps],
             if vec::is_not_empty(ts) {
                 alt make_command(ts) {
-                  left(com) { ps += [c(com)]; ts = []; }
+                  left(c) { ps += [cmd(c)]; ts = []; }
                   right(e) { ret error(e); }
                 }
             }]);
