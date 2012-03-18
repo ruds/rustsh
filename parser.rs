@@ -81,14 +81,9 @@ fn make_command(tokens: [token]) -> either<command, str> {
     for t in tokens {
         alt t {
           tokenizer::string(s) { args += [s]; }
-          tokenizer::redirect_output(s) {
-            o = outfile(s);
-            if (e == stdout) {
-                e = outfile(s);
-            }
-          }
+          tokenizer::redirect_output(s) { o = outfile(s); }
           tokenizer::redirect_error(s) { e = outfile(s); }
-          tokenizer::redirect_error_to_output { e = stdout; }
+          tokenizer::redirect_error_to_output { e = o; }
           tokenizer::redirect_input(s) { i = infile(s); }
           _ { ret right("Unexpected token: " + token_to_string(t)); }
         }
