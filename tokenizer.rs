@@ -274,7 +274,7 @@ fn consume_string(c: [char], offset: uint) -> consumption {
                     ret r;
                   }
                   _ {
-                    fail("consume_doubleq returned an unexpected type.");
+                    fail("consume_singleq returned an unexpected type.");
                   }
                 }
               }
