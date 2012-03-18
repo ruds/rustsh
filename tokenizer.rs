@@ -1,5 +1,5 @@
 /*
-Module: tokenize
+Module: tokenizer
 
 Command-line tokenizing
 */
