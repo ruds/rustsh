@@ -93,10 +93,29 @@ fn finish_parse(p: [part_parse]) -> parse_result {
 fn parse_tokens(tokens: [token], level: uint, &idx: uint) -> parse_result {
     let p: [part_parse] = [];
     let cur: [token] = [];
+
+    #macro([#make_command[ts, ps],
+            if vec::is_not_empty(ts) {
+                alt make_command(ts) {
+                  left(com) { ps += [c(com)]; ts = []; }
+                  right(e) { ret error(e); }
+                }
+            }]);
+
     while (idx < vec::len(tokens)) {
         let t = tokens[idx];
         alt t {
+          tokenizer::error(e) { ret error(e); }
+          tokenizer::pipe
+          | tokenizer::and
+          | tokenizer::or
+          | tokenizer::background
+          | tokenizer::sequence {
+            #make_command[cur, p];
+            p += [sep(t)];
+          }
           tokenizer::open_subshell {
+            #make_command[cur, p];
             idx += 1u;
             alt parse_tokens(tokens, level + 1u, idx) {
               parsed(cl) { p += [subshell(cl)]; }
@@ -108,22 +127,17 @@ fn parse_tokens(tokens: [token], level: uint, &idx: uint) -> parse_result {
             if level == 0u {
                 ret error("Unexpected ')'.");
             }
-            if vec::is_not_empty(cur) {
-                alt make_command(cur) {
-                  left(com) { p += [c(com)]; }
-                  right(e) { ret error(e); }
-                }
-            }
+            #make_command[cur, p];
             ret finish_parse(p);
           }
-          // TODO
+          tokenizer::continuation {  /* ignore me! */ }
           _ { cur += [t]; }
         }
         idx += 1u;
     }
-    // TODO
     if level > 0u {
         ret error("Expected ')'");
     }
-    fail("Not yet implemented.");
+    #make_command[cur, p];
+    ret finish_parse(p);
 }
