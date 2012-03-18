@@ -13,6 +13,7 @@ import either::either;
 import either::right;
 import either::left;
 import tokenizer::token;
+import tokenizer::token_to_string;
 
 export parse;
 
@@ -73,10 +74,26 @@ fn parse(tokens: [token]) -> parse_result {
 
 fn make_command(tokens: [token]) -> either<command, str> {
     assert vec::is_not_empty(tokens);
-    fail("not implemented.");
-//  ret right("Invalid syntax: '"
-//            + str::connect(vec::map(tokens, tokenizer::token_to_string), " ")
-//            + "'.");
+    let args: [str] = [];
+    let i = stdin;
+    let o = stdout;
+    let e = stderr;
+    for t in tokens {
+        alt t {
+          tokenizer::string(s) { args += [s]; }
+          tokenizer::redirect_output(s) {
+            o = outfile(s);
+            if (e == stdout) {
+                e = outfile(s);
+            }
+          }
+          tokenizer::redirect_error(s) { e = outfile(s); }
+          tokenizer::redirect_error_to_output { e = stdout; }
+          tokenizer::redirect_input(s) { i = infile(s); }
+          _ { ret right("Unexpected token: " + token_to_string(t)); }
+        }
+    }
+    ret left({args: args, input: i, output: o, error: e});
 }
 
 enum part_parse {
@@ -140,4 +157,38 @@ fn parse_tokens(tokens: [token], level: uint, &idx: uint) -> parse_result {
     }
     #make_command[cur, p];
     ret finish_parse(p);
+}
+
+#[test]
+fn test_make_command() {
+    assert make_command([tokenizer::string("foo"),
+                         tokenizer::string("bar"),
+                         tokenizer::redirect_output("baz"),
+                         tokenizer::redirect_error_to_output])
+        == left({args: ["foo", "bar"],
+                 input: stdin,
+                 output: outfile("baz"),
+                 error: outfile("baz")});
+    assert make_command([tokenizer::string("foo"),
+                         tokenizer::string("bar"),
+                         tokenizer::redirect_error_to_output,
+                         tokenizer::redirect_output("baz")])
+        == left({args: ["foo", "bar"],
+                 input: stdin,
+                 output: outfile("baz"),
+                 error: stdout});
+    assert make_command([tokenizer::string("foo"),
+                         tokenizer::string("bar"),
+                         tokenizer::redirect_input("hootenanny"),
+                         tokenizer::redirect_output("baz")])
+        == left({args: ["foo", "bar"],
+                 input: infile("hootenanny"),
+                 output: outfile("baz"),
+                 error: stderr});
+    alt make_command([tokenizer::string("foo"),
+                      tokenizer::string("bar"),
+                      tokenizer::background]) {
+      left(_) { assert false; }
+      right(_) { assert true; }
+    }
 }
