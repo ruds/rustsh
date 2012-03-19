@@ -81,10 +81,22 @@ fn make_command(tokens: [token]) -> either<command, str> {
     for t in tokens {
         alt t {
           tokenizer::string(s) { args += [s]; }
-          tokenizer::redirect_output(s) { o = outfile(s); }
-          tokenizer::redirect_error(s) { e = outfile(s); }
-          tokenizer::redirect_error_to_output { e = o; }
-          tokenizer::redirect_input(s) { i = infile(s); }
+          tokenizer::redirect_output(s) {
+            if (o != stdout) { ret right("Multiple output redirects."); }
+            o = outfile(s);
+          }
+          tokenizer::redirect_error(s) {
+            if (e != stderr) { ret right("Multiple error redirects."); }
+            e = outfile(s);
+          }
+          tokenizer::redirect_error_to_output {
+            if (e != stderr) { ret right("Multiple error redirects."); }
+            e = o;
+          }
+          tokenizer::redirect_input(s) {
+            if (i != stdin) { ret right("Multiple input redirects."); }
+            i = infile(s);
+          }
           _ { ret right("Unexpected token: " + token_to_string(t)); }
         }
     }
@@ -114,7 +126,7 @@ fn parse_tokens(tokens: [token], level: uint, &idx: uint) -> parse_result {
                 }
             }]);
 
-    while (idx < vec::len(tokens)) {
+    while idx < vec::len(tokens) {
         let t = tokens[idx];
         alt t {
           tokenizer::error(e) { ret error(e); }
@@ -180,6 +192,12 @@ fn test_make_command() {
                  input: infile("hootenanny"),
                  output: outfile("baz"),
                  error: stderr});
+    assert make_command([tokenizer::string("foo"),
+                         tokenizer::string("bar"),
+                         tokenizer::redirect_error_to_output,
+                         tokenizer::redirect_error("/dev/null"),
+                         tokenizer::redirect_output("baz")])
+        == right("Multiple error redirects.");
     alt make_command([tokenizer::string("foo"),
                       tokenizer::string("bar"),
                       tokenizer::background]) {
